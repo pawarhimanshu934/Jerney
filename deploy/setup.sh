@@ -53,6 +53,21 @@ sudo chown -R $USER:$USER /var/www/jerney
 # Copy project files (assumes you've transferred them to ~/Jerney)
 cp -r ~/Jerney/* /var/www/jerney/
 
+# Ensure backend/.env is copied or created
+if [ -f ~/Jerney/backend/.env ]; then
+  cp ~/Jerney/backend/.env /var/www/jerney/backend/.env
+else
+  cat <<EOF > /var/www/jerney/backend/.env
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=jerney_user
+DB_PASSWORD=jerney_pass_2026
+DB_NAME=jerney_db
+PORT=5000
+EOF
+fi
+
+
 # --- Install backend dependencies ---
 echo "📦 Installing backend dependencies..."
 cd /var/www/jerney/backend
