@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: db-service
+  namespace: jerney-ns
+  labels:
+    app.kubernetes.io/part-of: jerney
+    app.kubernetes.io/name: db-service
+    app.kubernetes.io/component: db
+
+spec:
+  ClusterIP: None # This makes the service headless, which is required for StatefulSets
+  selector:
+    app.kubernetes.io/name: db-statefulset
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+
+

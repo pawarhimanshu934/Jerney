@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db-statefulset
+  namespace: jerney-ns
+  labels:
+    app.kubernetes.io/part-of: jerney
+    app.kubernetes.io/name: db-statefulset
+    app.kubernetes.io/component: db
+
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: db-statefulset
+
+  serviceName: "db-service" # has to match the name of the headless service
+  replicas: 3 # by default is 1
+  minReadySeconds: 10 # by default is 0
+  
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: db-statefulset
+        app.kubernetes.io/component: db
+        app.kubernetes.io/part-of: jerney
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: db-container
+        image: postgres:17-alpine
+        ports:
+        - containerPort: 5432
+
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: jerney-configmap
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: jerney-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef: 
+              name: jerney-secret
+              key: POSTGRES_PASSWORD
+
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+        livenessProbe:
+          exec: 
+            command: [ "pg_isready", "-U", "$(POSTGRES_USER)", "-d", "$(POSTGRES_DB)" ]
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+        
+        readinessProbe:
+          exec:
+            command: [ "pg_isready", "-U", "$(POSTGRES_USER)", "-d", "$(POSTGRES_DB)" ]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+
+        volumeMounts:
+        - name: db-storage
+          mountPath: /var/lib/postgresql/data
+          subPath: pgdata
+
+        securityContext:
+          readOnlyRootFilesystem: false # Postgres needs write access
+          runAsNonRoot: false # Postgres image runs initdb as root then drops privileges
+          runAsUser: 1000 # Postgres default user
+          allowPrivilegeEscalation: false
+
+  volumeClaimTemplates:
+  - metadata:
+      name: db-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "jerney-storage-class"
+      resources:
+        requests:
+          storage: 5Gi

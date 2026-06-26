@@ -1,0 +1,26 @@
+# ---- NetworkPolicy: DB only accepts traffic from Backend ----
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-network-policy
+  namespace: jerney-ns
+  labels:
+    app.kubernetes.io/part-of: jerney
+    app.kubernetes.io/name: db-network-policy
+    app.kubernetes.io/component: network-policy
+
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: db-statefulset
+  policyTypes:
+  - Ingress
+
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: backend-deployment
+    ports:
+    - protocol: TCP
+      port: 5432

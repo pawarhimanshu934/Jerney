@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: backend-deployment
+  namespace: jerney-ns
+  labels:
+    app.kubernetes.io/part-of: jerney
+    app.kubernetes.io/name: backend-deployment
+    app.kubernetes.io/component: backend
+
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend-deployment
+
+  template:
+    metadata:
+      name: backend-pod
+      labels:
+        app.kubernetes.io/name: backend-deployment
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/part-of: jerney
+    spec:
+      automountServiceAccountToken: false #if the pod doesn't need to access the Kubernetes API
+      containers:
+      - name: backend-container
+        image: jerney-backend:latest
+        ports:
+        - containerPort: 5000
+        envfrom:
+        - configMapRef:
+            name: jerney-configmap
+        env:
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: jerney-secret
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: jerney-secret
+              key: DB_PASSWORD
+
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits: 
+            memory: "256Mi"
+            cpu: "300m"
+
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+

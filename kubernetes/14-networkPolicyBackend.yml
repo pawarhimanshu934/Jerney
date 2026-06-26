@@ -1,0 +1,26 @@
+# ---- NetworkPolicy: Backend only accepts traffic from Frontend ----
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-network-policy
+  namespace: jerney-ns
+  labels:
+    app.kubernetes.io/part-of: jerney
+    app.kubernetes.io/name: backend-network-policy
+    app.kubernetes.io/component: network-policy
+
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: backend-deployment
+  policyTypes:
+  - Ingress
+
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: frontend-deployment
+    ports:
+    - protocol: TCP
+      port: 5000
