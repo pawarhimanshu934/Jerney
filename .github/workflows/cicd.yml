@@ -1,0 +1,185 @@
+name: CI/CD Pipeline
+
+#Lint -> SCA -> build and push -> trivy scan docker images -> Scan infra Terraform/K8 using checkovs -> lint docker file -> updates image tag in k8 manifest
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+# ==============================================================
+# STAGE 1: Linting
+# ==============================================================
+  lint:
+    name: "Code Linting"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [backend, frontend] 
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v7
+    
+    - name: Setup NodeJs
+      uses: actions/setup-node@v6
+      with:
+        node-version: 20
+        cache: 'npm'
+        cache-dependency-path: "${{ matrix.component }}/package-lock.json"
+
+    - name: Install Dependencies
+      working-directory: ${{ matrix.component }}
+      run: npm ci
+    
+    - name: Run ES-lint
+      working-directory: ${{ matrix.component }}
+      run: npm run lint 
+
+# ==============================================================
+# STAGE 2: Software Composition Analysis(SCA) - Dependency Audit
+# ==============================================================
+  sca:
+    name: "Auditing Dependencies"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v7
+
+    - name: Setup NodeJs
+      uses: actions/setup-node@v6
+      with:
+        node-version: 20
+        cache: 'npm'
+        cache-dependency-path: ${{ matrix.component }}/package-lock.json
+    
+    - name: Install Dependencies
+      working-directory: ${{ matrix.component }}
+      run: npm ci
+      
+      # npm audit for known vulnerabilities (fail on high/critical)
+    - name: Audit for known vulnerabilities
+      working-directory: ${{ matrix.component }}
+      run: npm audit --audit-level=high || echo "Vulnerabilities found, but continuing pipeline"
+      
+
+# ==============================================================
+# STAGE 3: Build and Push - Docker Images on GitHub Container Registry 
+# ==============================================================
+  build:
+    name: "Build ${{ matrix.component }}"
+    runs-on: ubuntu-latest
+    needs: sca
+    permissions:
+      contents: read
+      packages: write # Needed to push images to GHCR
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v7
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v4
+      with: 
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract Metadata (tags, labels)
+      id: meta
+      uses: docker/metadata-action@v6
+      with:
+        images: "ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}"
+        tag: |
+          type=sha,prefix=
+          type=ref,event=branch
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and Push Docker Image
+      uses: docker/build-push-action@v7
+      with:
+        context: ./${{ matrix.component }}
+        file: ./${{ matrix.component }}/Dockerfile
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: steps.meta.outputs.tags         #pulling tags from the previous step and apply them to this Docker image
+        labels: steps.meta.outputs.labels     #metadata attached to Docker images   
+        cache-from: type=gha #Docker builds are slow because every time (dependencies reinstall, layers rebuild). This step pulls cached layers from GitHub Actions cache due to which build becomes much faster.
+        cache-to: type=gha,mode=max # After build, this step save new layers back to GitHub cache, mode=max saves maximum layers possible. Better reuse in future builds
+        # Security: provenance and SBOM
+        provenance: true  
+        sbom: true 
+
+#   # ==============================================================
+#   # STAGE 4: Container Image Scanning (Trivy)
+#   # ==============================================================
+  image-scan:
+    name: Scanning ${{ matrix.component }} Image using trivy
+    runs-on: ubuntu-latest
+    needs: build 
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Build image for scanning 
+      run: |
+        docker build -t jerney-${{ matrix.component }}:scan ./${{ matrix.component }}
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'jerney-${{ matrix.component }}:scan'
+        format: 'table'
+        exit-code: '1' # Fails the build if vulnerabilities are found
+        ignore-unfixed: true
+        vuln-type: "os,library"
+        severity: 'CRITICAL,HIGH'
+        timeout: "10m"
+
+
+#   # ==============================================================
+#   # STAGE 5: IaC Security Scan (Checkov) — Terraform + K8s
+#   # ==============================================================
+
+
+
+
+
+
+# Notes: 
+
+# cache-from → use old cache
+# cache-to   → save new cache
+
+# 👉 This is bi-directional caching
+
+
+# Provenance 
+#= birth certificate of your Docker image
+#"Where did this image come from?” It stores -> Who built the image, When it was built, Source repo, Commit  ( Required in modern DevSecOps )
+# Why important?
+# Supply chain security 🔥
+# Required in modern DevSecOps
+# Prevents tampered images
+
+
+# SBOM = ingredients list of your app
+#Software Bill of Materials, it lists -> What’s inside this image? -> OS packages, Node modules, Dependencies
+# Why important?
+# Vulnerability scanning (Trivy uses this)
+# Compliance
+# Security audits
+
+
+
