@@ -110,8 +110,8 @@ jobs:
         context: ./${{ matrix.component }}
         file: ./${{ matrix.component }}/Dockerfile
         push: ${{ github.event_name != 'pull_request' }}
-        tags: steps.meta.outputs.tags         #pulling tags from the previous step and apply them to this Docker image
-        labels: steps.meta.outputs.labels     #metadata attached to Docker images   
+        tags: ${{ steps.meta.outputs.tags }}         #pulling tags from the previous step and apply them to this Docker image
+        labels: ${{ steps.meta.outputs.labels }}    #metadata attached to Docker images   
         cache-from: type=gha #Docker builds are slow because every time (dependencies reinstall, layers rebuild). This step pulls cached layers from GitHub Actions cache due to which build becomes much faster.
         cache-to: type=gha,mode=max # After build, this step save new layers back to GitHub cache, mode=max saves maximum layers possible. Better reuse in future builds
         # Security: provenance and SBOM
