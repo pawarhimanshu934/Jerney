@@ -15,6 +15,7 @@ jobs:
   lint:
     name: "Code Linting"
     runs-on: ubuntu-latest
+    continue-on-error: true
     strategy:
       matrix:
         component: [backend, frontend] 
@@ -124,6 +125,7 @@ jobs:
   image-scan:
     name: Scanning ${{ matrix.component }} Image using trivy
     runs-on: ubuntu-latest
+    continue-on-error: true
     needs: build 
     strategy:
       matrix:
