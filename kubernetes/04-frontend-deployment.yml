@@ -25,11 +25,13 @@ spec:
     spec:
       containers:
       - name: frontend-container
-        image: jerney-frontend:latest
+        image: ghcr.io/pawarhimanshu934/jerney/jerney-frontend:himanshu
+        imagePullPolicy: Always
         ports:
-        - containerPort: 80
+        - containerPort: 8080
         securityContext:
           runAsNonRoot: true
+          runAsUser: 101 #nginx user
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: false # Nginx needs write for cache/pid
         resources:
@@ -42,13 +44,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /
-            port: 80
+            port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /
-            port: 80
+            port: 8080
           initialDelaySeconds: 3
           periodSeconds: 5
         

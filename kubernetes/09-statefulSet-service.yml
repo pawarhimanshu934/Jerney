@@ -1,15 +1,15 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: db-service
+  name: db
   namespace: jerney-ns
   labels:
     app.kubernetes.io/part-of: jerney
-    app.kubernetes.io/name: db-service
+    app.kubernetes.io/name: db
     app.kubernetes.io/component: db
 
 spec:
-  ClusterIP: None # This makes the service headless, which is required for StatefulSets
+  clusterIP: None # This makes the service headless, which is required for StatefulSets
   selector:
     app.kubernetes.io/name: db-statefulset
   ports:

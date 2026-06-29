@@ -9,6 +9,6 @@ data:
   # property-like keys; each key maps to a simple value
   POSTGRES_DB : jerney_db
   DB_HOST : db
-  DB_PORT : "5000"
+  PORT : "5000"
   DB_NAME : jerney_db
   DB_PORT: "5432"

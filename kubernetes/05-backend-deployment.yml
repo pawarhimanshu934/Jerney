@@ -26,10 +26,11 @@ spec:
       automountServiceAccountToken: false #if the pod doesn't need to access the Kubernetes API
       containers:
       - name: backend-container
-        image: jerney-backend:latest
+        image: ghcr.io/pawarhimanshu934/jerney/jerney-backend:himanshu
+        imagePullPolicy: Always
         ports:
         - containerPort: 5000
-        envfrom:
+        envFrom:
         - configMapRef:
             name: jerney-configmap
         env:
@@ -54,6 +55,7 @@ spec:
 
         securityContext:
           runAsNonRoot: true
+          runAsUser: 1000 #node user
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
 

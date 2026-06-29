@@ -13,8 +13,8 @@ spec:
     matchLabels:
       app.kubernetes.io/name: db-statefulset
 
-  serviceName: "db-service" # has to match the name of the headless service
-  replicas: 3 # by default is 1
+  serviceName: "db" # has to match the name of the headless service, same is used in codebase to connect to the database
+  replicas: 1 # single instance - multiple replicas without replication causes split-brain
   minReadySeconds: 10 # by default is 0
   
   template:
@@ -24,6 +24,10 @@ spec:
         app.kubernetes.io/component: db
         app.kubernetes.io/part-of: jerney
     spec:
+      securityContext:
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 10
       containers:
@@ -33,6 +37,8 @@ spec:
         - containerPort: 5432
 
         env:
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         - name: POSTGRES_DB
           valueFrom:
             configMapKeyRef:
@@ -74,12 +80,10 @@ spec:
         volumeMounts:
         - name: db-storage
           mountPath: /var/lib/postgresql/data
-          subPath: pgdata
 
         securityContext:
           readOnlyRootFilesystem: false # Postgres needs write access
-          runAsNonRoot: false # Postgres image runs initdb as root then drops privileges
-          runAsUser: 1000 # Postgres default user
+          runAsNonRoot: true # Postgres image runs initdb as root then drops privileges
           allowPrivilegeEscalation: false
 
   volumeClaimTemplates:
