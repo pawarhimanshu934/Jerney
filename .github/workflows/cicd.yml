@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: DevSecOps CI/CD Pipeline
 
 #Lint -> SCA -> build and push -> trivy scan docker images -> Scan infra Terraform/K8 using checkovs -> lint docker file -> updates image tag in k8 manifest
 
@@ -9,6 +9,12 @@ on:
       - 'kubernetes/**'
   pull_request:
     branches: ["*"]
+
+#Concurrency used to avoid running multiple pipeline at the same time when multiple code push event happen quicky.
+#It ensures to execute pipeline only for latest commit and ignore others.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   DOCKER_REGISTRY: ghcr.io
@@ -22,7 +28,7 @@ jobs:
   lint:
     name: "Code Linting"
     runs-on: ubuntu-latest
-    continue-on-error: true
+    continue-on-error: true #added just for testing, this shoudn't be present in prod pipeline. 
     strategy:
       matrix:
         component: [backend, frontend] 
@@ -46,11 +52,42 @@ jobs:
       run: npm run lint 
 
 # ==============================================================
-# STAGE 2: Software Composition Analysis(SCA) - Dependency Audit
+# STAGE 2: Unit Test
+# ==============================================================
+  unit-test:
+    name: "Running Unit test on ${{ matrix.component }}"
+    runs-on: ubuntu-latest
+    continue-on-error: true #added just for testing, this shoudn't be present in prod pipeline. 
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+    - name: "Checkout Code"
+      uses: actions/checkout@v7
+
+    - name: Setup Nodejs
+      uses: actions/setup-node@v6
+      with:
+        node-version: 20
+        cache: 'npm'
+        cache-dependency-path: "${{ matrix.component }}"
+    
+    - name: Install Dependencies 
+      working-directory: ${{ matrix.component }}
+      run: npm ci
+    
+    - name: Run Unit Tests
+      working-directory: ${{ matrix.component }}
+      run: npm test -- --coverage
+
+
+# ==============================================================
+# STAGE 3: Software Composition Analysis(SCA) - Dependency Audit
 # ==============================================================
   sca:
     name: "Auditing Dependencies"
     runs-on: ubuntu-latest
+    needs: unit-test
     strategy:
       matrix:
         component: [backend, frontend]
@@ -72,11 +109,11 @@ jobs:
       # npm audit for known vulnerabilities (fail on high/critical)
     - name: Audit for known vulnerabilities
       working-directory: ${{ matrix.component }}
-      run: npm audit --audit-level=high || echo "Vulnerabilities found, but continuing pipeline"
-      
+      run: npm audit --audit-level=high || echo "Vulnerabilities found, but continuing pipeline" #Just for testing, "echo" will be removed in production.
+       
 
 # ==============================================================
-# STAGE 3: Build and Push - Docker Images on GitHub Container Registry 
+# STAGE 4: Build and Push - Docker Images on GitHub Container Registry 
 # ==============================================================
   build:
     if: github.actor != 'github-actions[bot]'
@@ -103,13 +140,13 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Extract Metadata (tags, labels)
+    - name: Extract Metadata (tags, labels) 
       id: meta
       uses: docker/metadata-action@v6
       with:
         images: "ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}"
-        tag: |
-          type=sha,prefix=
+        tag: |                  #tag by commitID, branchName and latest( if main branch )
+          type=sha,prefix=  
           type=ref,event=branch
           type=raw,value=latest,enable={{is_default_branch}}
 
@@ -119,6 +156,7 @@ jobs:
         context: ./${{ matrix.component }}
         file: ./${{ matrix.component }}/Dockerfile
         push: ${{ github.event_name != 'pull_request' }}
+        platforms: linux/amd64, linux/arm64     #Multi-Arch build, this build will work on different machines now.
         tags: ${{ steps.meta.outputs.tags }}         #pulling tags from the previous step and apply them to this Docker image
         labels: ${{ steps.meta.outputs.labels }}    #metadata attached to Docker images   
         cache-from: type=gha #Docker builds are slow because every time (dependencies reinstall, layers rebuild). This step pulls cached layers from GitHub Actions cache due to which build becomes much faster.
@@ -128,44 +166,65 @@ jobs:
         sbom: true 
 
 #   # ==============================================================
-#   # STAGE 4: Container Image Scanning (Trivy)
+#   # STAGE 5: Cosigning Container Images
+#   # ==============================================================
+  cosign:
+    name: Signing Container images
+    runs-on: ubuntu-latest
+    needs: build 
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3
+
+    - name: Sign Images ( Keyless )
+      run : |
+        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}
+
+#   # ==============================================================
+#   # STAGE 6: Container Image Scanning (Trivy)
 #   # ==============================================================
   image-scan:
-    name: Scanning ${{ matrix.component }} Image using trivy
+    name: Scanning ${{ matrix.component }} Image using Trivy
     runs-on: ubuntu-latest
-    continue-on-error: true
+    continue-on-error: true #added just for testing, this shoudn't be present in prod pipeline. 
     needs: build 
     strategy:
       matrix:
         component: [backend, frontend]
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v7
-
-    - name: Build image for scanning 
-      run: |
-        docker build -t jerney-${{ matrix.component }}:scan ./${{ matrix.component }}
-    
-    - name: Run Trivy vulnerability scanner
+    - name: Run Trivy vulnerability scanner on build Images
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: 'jerney-${{ matrix.component }}:scan'
-        format: 'table'
+        image-ref: 'ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}'
+        format: 'sarif'
+        output: trivy-${{ matrix.component }}.sarif
         exit-code: '1' # Fails the build if vulnerabilities are found
         ignore-unfixed: true
         vuln-type: "os,library"
         severity: 'CRITICAL'
         timeout: "10m"
 
+      #Upload Trviy results on repository security tab instead of CLI
+    - name: Upload Trivy Results on Security Tab 
+      uses: github/codeql-action/upload-sarif@v3
+      with: 
+        sarif_file: trivy-${{ matrix.component }}.sarif
+
 
 #   # ==============================================================
-#   # STAGE 5: IaC Security Scan (Checkov) — Terraform + K8s
+#   # STAGE 7: IaC Security Scan (Checkov) — Terraform + K8s
 #   # ==============================================================
 
   iac-scan:
     name: IAC Security Scan
     runs-on: ubuntu-latest
-    continue-on-error: true
+    continue-on-error: true #added just for testing, this shoudn't be present in prod pipeline. 
     needs: lint
     steps:
     - name: Checkout Code
@@ -253,89 +312,18 @@ jobs:
         git config --global user.email "actions@github"
 
         git add kubernetes/*
-        git commit -m "Updated Kubernetes manifests with new image tags for commit ${{ steps.sha.outputs.short }}" || echo "No changes to commit"
-        git push origin himanshu
+        git commit -m "Updated Kubernetes manifests with new image tags for commit ${{ steps.sha.outputs.short }} [skip ci]" || echo "No changes to commit"
+        git push origin ${{ github.ref }}
 
 
 
 
 # Notes: 
 
-# cache-from → use old cache
-# cache-to   → save new cache
-
-# 👉 This is bi-directional caching
-
-
-# Provenance 
-#= birth certificate of your Docker image
-#"Where did this image come from?” It stores -> Who built the image, When it was built, Source repo, Commit  ( Required in modern DevSecOps )
-# Why important?
-# Supply chain security 🔥
-# Required in modern DevSecOps
-# Prevents tampered images
-
-
-# SBOM = ingredients list of your app
-#Software Bill of Materials, it lists -> What’s inside this image? -> OS packages, Node modules, Dependencies
-# Why important?
-# Vulnerability scanning (Trivy uses this)
-# Compliance
-# Security audits
-
-#Checkov
-#Checkov is a tool used to scan Infrastructure as Code (IaC), container images, and open-source packages for security and compliance misconfigurations.
-
-# soft_fail : it controls Checkov breaks your CI pipeline when it finds issues. If true it wont break, if false then there will be strict scanning.
-
-# soft_fail: false
-
-# 👉 If ANY policy fails:
-
-# ❌ Step fails
-# ❌ Pipeline fails
-# ❌ Deployment blocked
-
-# ✔️ Use this for:
-
-# Terraform (in your case)
-# Production environments
-# Security-critical infra
-
-
-# soft_fail: true
-
-# 👉 If issues are found:
-
-# ⚠️ Issues are shown
-# ✅ Pipeline CONTINUES
-
-# ✔️ Use this for:
-
-# Kubernetes manifests (like you did)
-# Early-stage projects
-# When some checks are not applicable
 
 
 
-# skip_check -> Tells Checkov: “Don’t flag these specific security checks” 
-# skip_check: CKV_AWS_39,CKV_AWS_58
 
-# You are skipping:
-# CKV_AWS_39 → EKS public endpoint
-# CKV_AWS_58 → Another AWS-related security rule
-
-# Skipping = you accept the risk
-
-# CKV_AWS_39 -> It’s a policy ID defined by Checkov. Checkov has a huge built-in library of security rules, and each rule gets a unique ID like:
-# CKV_<PROVIDER>_<NUMBER>
-
-
-# output_format — How results are displayed
-
-# ✅ What it does
-
-# Controls how scan results are formatted.
 
 # Common options:
 # Format	Description
