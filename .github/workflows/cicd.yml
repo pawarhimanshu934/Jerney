@@ -118,7 +118,7 @@ jobs:
   build:
     if: github.actor != 'github-actions[bot]'
     name: "Build ${{ matrix.component }}"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     needs: sca
     permissions:
       contents: read
@@ -316,18 +316,3 @@ jobs:
         git push origin ${{ github.ref }}
 
 
-
-
-# Notes: 
-
-
-
-
-
-
-# Common options:
-# Format	Description
-# cli	Human-readable terminal output
-# json	Machine-readable (for tools, dashboards)
-# sarif	GitHub Security tab integration
-# junitxml	CI test reporting
