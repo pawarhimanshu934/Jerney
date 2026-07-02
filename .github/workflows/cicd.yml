@@ -118,7 +118,7 @@ jobs:
   build:
     if: github.actor != 'github-actions[bot]'
     name: "Build ${{ matrix.component }}"
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     needs: sca
     permissions:
       contents: read
@@ -156,7 +156,6 @@ jobs:
         context: ./${{ matrix.component }}
         file: ./${{ matrix.component }}/Dockerfile
         push: ${{ github.event_name != 'pull_request' }}
-        platforms: linux/amd64, linux/arm64     #Multi-Arch build, this build will work on different machines now.
         tags: ${{ steps.meta.outputs.tags }}         #pulling tags from the previous step and apply them to this Docker image
         labels: ${{ steps.meta.outputs.labels }}    #metadata attached to Docker images   
         cache-from: type=gha #Docker builds are slow because every time (dependencies reinstall, layers rebuild). This step pulls cached layers from GitHub Actions cache due to which build becomes much faster.
