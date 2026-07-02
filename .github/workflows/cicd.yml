@@ -183,7 +183,7 @@ jobs:
 
     - name: Sign Images ( Keyless )
       run : |
-        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}
+        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}:${{ github.sha }}
 
 #   # ==============================================================
 #   # STAGE 6: Container Image Scanning (Trivy)
@@ -200,7 +200,7 @@ jobs:
     - name: Run Trivy vulnerability scanner on build Images
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: 'ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}'
+        image-ref: 'ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}:${{ github.sha }}'
         format: 'sarif'
         output: trivy-${{ matrix.component }}.sarif
         exit-code: '1' # Fails the build if vulnerabilities are found
