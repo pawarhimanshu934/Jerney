@@ -183,7 +183,7 @@ jobs:
 
     - name: Sign Images ( Keyless )
       run : |
-        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}:${{ github.sha }}
+        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}:${{ github.ref_name }}
 
 #   # ==============================================================
 #   # STAGE 6: Container Image Scanning (Trivy)
@@ -200,7 +200,7 @@ jobs:
     - name: Run Trivy vulnerability scanner on build Images
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: 'ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}:${{ github.sha }}'
+        image-ref: 'ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}:${{ github.ref_name }}'
         format: 'sarif'
         output: trivy-${{ matrix.component }}.sarif
         exit-code: '1' # Fails the build if vulnerabilities are found
@@ -312,6 +312,6 @@ jobs:
 
         git add kubernetes/*
         git commit -m "Updated Kubernetes manifests with new image tags for commit ${{ steps.sha.outputs.short }} [skip ci]" || echo "No changes to commit"
-        git push origin ${{ github.ref }}
+        git push origin ${{ github.ref_name }}
 
 
