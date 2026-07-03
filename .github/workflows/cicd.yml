@@ -226,10 +226,17 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true #added just for testing, this shoudn't be present in prod pipeline. 
     needs: build 
+    permissions:
+      contents: read
+      security-events: write # Needed to upload Trivy results to Security tab
     strategy:
       matrix:
         component: [backend, frontend]
     steps:
+
+    - name: Checkout Code
+      uses: actions/checkout@v7
+      
     - name: Run Trivy vulnerability scanner on build Images
       uses: aquasecurity/trivy-action@master
       with:
