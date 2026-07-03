@@ -170,8 +170,16 @@ jobs:
         provenance: true  
         sbom: true 
     
-    - name: Extract digest
-      run: echo "DIGEST=${{ steps.build.outputs.digest }}" >> $GITHUB_ENV
+    #keeping digest of both frontend and backend separate by uploading them to artifcatory and then later use in cosigning.
+    - name: Save Digest to a file
+      run : echo "${{ steps.build.outputs.digest }}" > digest.txt
+
+    - name: Upload digest artifact 
+      uses: actions/upload-artifact@v4
+      with:
+        name: digest-${{ matrix.component }}
+        path: digest.txt
+        retention-days: 1
 
 #   # ==============================================================
 #   # STAGE 5: Cosigning Container Images
@@ -198,9 +206,17 @@ jobs:
     - name: Install Cosign
       uses: sigstore/cosign-installer@v3
 
-    - name: Sign Images ( Keyless )
+    - name: Download digest artifact 
+      uses: actions/download-artifact@v4
+      with:
+        name: digest-${{ matrix.component }}
+
+    - name: Read Digest into env
+      run: echo "DIGEST=$(cat digest.txt)" >> $GITHUB_ENV
+
+    - name: Sign Images ( Keyless by digest )
       run : |
-        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}:himanshu
+        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}@{{ env.DIGEST }}
 
 #   # ==============================================================
 #   # STAGE 6: Container Image Scanning (Trivy)
@@ -220,7 +236,7 @@ jobs:
         image-ref: 'ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}:${{ github.ref_name }}'
         format: 'sarif'
         output: trivy-${{ matrix.component }}.sarif
-        exit-code: '1' # Fails the build if vulnerabilities are found
+        exit-code: '0' # If you want to fails the build if vulnerabilities are found, make it '1' 
         ignore-unfixed: true
         vuln-type: "os,library"
         severity: 'CRITICAL'

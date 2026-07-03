@@ -118,3 +118,37 @@ Checkov is a tool used to scan Infrastructure as Code (IaC), container images, a
 # cache-to   → save new cache
 
 # 👉 This is bi-directional caching -->
+
+
+
+Notes : 
+
+What is a digest, really?
+When Docker builds an image, it takes the entire content of that image (all layers, config, everything) and runs it through a hash function (SHA-256). The output is a fixed-length string like:
+sha256:a1b2c3d4e5f6...
+This is the digest. Think of it like a fingerprint:
+
+Tag (e.g. :latest, :himanshu, :main) = a label you stick on a box. You can peel it off and stick it on a different box later. Mutable.
+Digest = the box's actual fingerprint, derived from what's physically inside it. If even one byte of the image changes, the digest changes completely. Immutable.
+
+So ghcr.io/repo/jerney-backend:himanshu might point to a different image next week if someone rebuilds and pushes with the same tag. But ghcr.io/repo/jerney-backend@sha256:a1b2c3d4... will always refer to that exact image, forever — that's why signing by digest is the trustworthy way to do it.
+
+Why can't you just use it "directly" — why not needs.build.outputs.digest?
+In a non-matrix job, this pattern works totally fine:
+
+build:
+  outputs:
+    digest: ${{ steps.build.outputs.digest }}
+cosign:
+  needs: build
+  run: echo ${{ needs.build.outputs.digest }}
+
+  The problem is your build job uses strategy: matrix: component: [backend, frontend]. That means build actually runs twice — as two separate parallel job instances, one for backend, one for frontend. Each instance tries to set the same output name (digest).
+GitHub Actions doesn't merge these into a list. It just lets the last matrix job to finish win — so needs.build.outputs.digest in your cosign job could end up being the frontend digest for both the backend and frontend signing steps, depending on timing. That's a race condition, and it would silently sign the wrong image. This is a known limitation of GitHub Actions matrix jobs, not a mistake in how you wrote it.
+So why artifacts?
+Uploading a file as an artifact named digest-backend and digest-frontend (using matrix.component in the artifact name) keeps the two values physically separate, tagged by which component they belong to. Then when the cosign job also runs as a matrix over [backend, frontend], each run downloads only the artifact matching its own matrix.component — so backend always gets backend's digest, frontend always gets frontend's. No race condition, no guessing.
+There is a simpler alternative if you want to avoid artifacts entirely: give each matrix job's output a unique name using matrix.component baked into the job id — but GitHub Actions doesn't let you dynamically name outputs per matrix value either, so in practice, artifacts (or writing to a shared file/cache keyed by component) are the standard workaround people use for "pass a per-matrix-value value to a downstream job."
+
+
+Solution : write each digest to a file → upload as a matrix-scoped artifact → download it in the cosign job using the matching component matrix value.
+
