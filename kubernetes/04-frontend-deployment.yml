@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
       - name: frontend-container
-        image: ghcr.io/pawarhimanshu934/Jerney/jerney-frontend:aac3e69
+        image: ghcr.io/pawarhimanshu934/jerney/jerney-frontend:3603835
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

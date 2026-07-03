@@ -26,7 +26,7 @@ spec:
       automountServiceAccountToken: false #if the pod doesn't need to access the Kubernetes API
       containers:
       - name: backend-container
-        image: ghcr.io/pawarhimanshu934/Jerney/jerney-backend:aac3e69
+        image: ghcr.io/pawarhimanshu934/jerney/jerney-backend:3603835
         imagePullPolicy: Always
         ports:
         - containerPort: 5000
