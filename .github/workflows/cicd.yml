@@ -168,6 +168,9 @@ jobs:
         # Security: provenance and SBOM
         provenance: true  
         sbom: true 
+    
+    - name: Extract digest
+      run: echo "DIGEST=${{ steps.build.outputs.digest }}" >> $GITHUB_ENV
 
 #   # ==============================================================
 #   # STAGE 5: Cosigning Container Images
@@ -195,7 +198,7 @@ jobs:
 
     - name: Sign Images ( Keyless )
       run : |
-        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}:
+        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}@${DIGEST}
 
 #   # ==============================================================
 #   # STAGE 6: Container Image Scanning (Trivy)
