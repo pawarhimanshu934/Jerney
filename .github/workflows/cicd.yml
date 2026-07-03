@@ -11,7 +11,7 @@ on:
     branches: ["*"]
 
 permissions:
-  contents: read
+  contents: read # Needed to read the repository contents
   packages: write # Needed to push images to GHCR
   id-token: write # Needed for cosign keyless signing
 
@@ -182,7 +182,8 @@ jobs:
     needs: build 
     permissions:
       contents: read
-      id-token: write
+      id-token: write # Needed for keyless signing
+      packages: write # Needed to push signature to GHCR
     strategy:
       matrix:
         component: [backend, frontend]
