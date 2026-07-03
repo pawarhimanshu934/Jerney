@@ -10,6 +10,11 @@ on:
   pull_request:
     branches: ["*"]
 
+permissions:
+  contents: read
+  packages: write # Needed to push images to GHCR
+  id-token: write # Needed for cosign keyless signing
+
 #Concurrency used to avoid running multiple pipeline at the same time when multiple code push event happen quicky.
 #It ensures to execute pipeline only for latest commit and ignore others.
 concurrency:
@@ -190,7 +195,7 @@ jobs:
 
     - name: Sign Images ( Keyless )
       run : |
-        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}:${{ github.ref_name }}
+        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}:
 
 #   # ==============================================================
 #   # STAGE 6: Container Image Scanning (Trivy)
