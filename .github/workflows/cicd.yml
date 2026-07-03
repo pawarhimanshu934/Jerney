@@ -216,7 +216,7 @@ jobs:
 
     - name: Sign Images ( Keyless by digest )
       run : |
-        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}@{{ env.DIGEST }}
+        cosign sign --yes ghcr.io/${{ github.repository }}/jerney-${{ matrix.component }}@${{ env.DIGEST }}
 
 #   # ==============================================================
 #   # STAGE 6: Container Image Scanning (Trivy)
