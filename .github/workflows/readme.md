@@ -1,154 +1,216 @@
-Security best practices implemented on your github action pipeline.
+# GitHub Actions Security Best Practices
 
-1) SBOM (Software Bill of Materials)
+This document outlines the security best practices implemented in your GitHub Actions CI/CD pipeline.
 
-Think of this like an ingredient list for your Docker image. 
+---
 
-It tells you:
+## 1. SBOM (Software Bill of Materials)
 
-What libraries, packages, and dependencies are inside your Docker image
-Their versions
-Where they came from
+**What it is:**
+Think of this like an ingredient list for your Docker image. It tells you:
+- What libraries, packages, and dependencies are inside your Docker image
+- Their versions
+- Where they came from
 
-Why it matters:
+**Why it matters:**
+- Helps find vulnerable components quickly
+- Makes your software more transparent and auditable
+- Essential for supply chain security
 
-Helps find vulnerable components quickly
-Makes your software more transparent and auditable
+---
 
-2) Provenance ( Required in modern DevSecOps )
+## 2. Provenance (Required in Modern DevSecOps)
 
-This is like birth certificate of your Docker image.
+**What it is:**
+This is like a birth certificate of your Docker image. It answers:
+- Who built it?
+- When was it built?
+- What code and tools were used?
+- Where is it coming from (Source)?
 
-It answers:
+**Why it matters:**
+- Proves the build is trustworthy
+- Helps prevent tampering in the build process
+- Ensures build integrity and traceability
 
-Who built it?
-When was it built?
-What code and tools were used?
-Where it is comming from? Source? 
+---
 
-Why it matters:
+## 3. Image Cosigning
 
-Proves the build is trustworthy
-Helps prevent tampering in the build process
+**What it is:**
+This is like digitally signing your Docker image before shipping it. When you build a Docker container image:
+- You attach a cryptographic signature to it
+- Others can verify that signature before using it
 
-3) Image Cosigning
+**Why it matters:**
+- Ensures the image hasn't been modified
+- Confirms it came from a trusted source
+- Prevents unauthorized image usage
 
-This is like digitally signing a your Docker image before shipping it.
+---
 
-When you build a docker container image:
+## 4. Concurrency
 
-You attach a cryptographic signature to it
-Others can verify that signature before using it
-
-Why it matters:
-
-Ensures the image hasn’t been modified
-Confirms it came from a trusted source
-
-4) Concurrency
-
+**What it is:**
 This controls how many workflows or jobs run at the same time.
 
-Example:
+**Example:**
+- Prevent multiple deployments running simultaneously
+- Cancel older runs when a new one starts
 
-You can prevent multiple deployments running simultaneously
-Or cancel older runs when a new one starts
+**Why it matters:**
+- Avoids conflicts (like two deployments at once)
+- Saves resources and keeps pipelines clean
+- Prevents race conditions
 
-Why it matters:
+---
 
-Avoids conflicts (like two deployments at once)
-Saves resources and keeps pipelines clean
+## 5. Checkov
 
-5) Checkov
+**What it is:**
 Checkov is a tool used to scan Infrastructure as Code (IaC), container images, and open-source packages for security and compliance misconfigurations.
 
-<!-- # soft_fail : it controls Checkov on breaking your CI pipeline when it finds issues. If true it wont break, if false then there will be strict scanning.
+### Configuration Options
 
-# soft_fail: false
+#### `soft_fail` Setting
 
-# 👉 If ANY policy fails:
+Controls how Checkov behaves when it finds issues:
 
-# ❌ Step fails
-# ❌ Pipeline fails
-# ❌ Deployment blocked
+**soft_fail: false** (Strict Mode)
+```yaml
+soft_fail: false
+```
+- ❌ Step fails if ANY policy fails
+- ❌ Pipeline fails
+- ❌ Deployment blocked
 
-# ✔️ Use this for:
+✔️ **Use this for:**
+- Terraform configurations
+- Production environments
+- Security-critical infrastructure
 
-# Terraform (in your case)
-# Production environments
-# Security-critical infra
+**soft_fail: true** (Warning Mode)
+```yaml
+soft_fail: true
+```
+- ⚠️ Issues are shown
+- ✅ Pipeline CONTINUES
 
+✔️ **Use this for:**
+- Kubernetes manifests
+- Early-stage projects
+- When some checks are not applicable
 
-# soft_fail: true
+#### `skip_check` Setting
 
-# 👉 If issues are found:
+Tells Checkov: "Don't flag these specific security checks"
 
-# ⚠️ Issues are shown
-# ✅ Pipeline CONTINUES
+```yaml
+skip_check: CKV_AWS_39,CKV_AWS_58
+```
 
-# ✔️ Use this for:
+Example:
+- `CKV_AWS_39` → EKS public endpoint
+- `CKV_AWS_58` → AWS-related security rule
 
-# Kubernetes manifests (like you did)
-# Early-stage projects
-# When some checks are not applicable
+**Important:** Skipping = you accept the risk
 
+**Understanding Check IDs:**
+Checkov has a built-in library of security rules, each with a unique ID format:
+```
+CKV_<PROVIDER>_<NUMBER>
+```
 
+#### `output_format` Setting
 
-# skip_check -> Tells Checkov: “Don’t flag these specific security checks” 
-# skip_check: CKV_AWS_39,CKV_AWS_58
+Controls how scan results are displayed in logs and reports.
 
-# You are skipping:
-# CKV_AWS_39 → EKS public endpoint
-# CKV_AWS_58 → Another AWS-related security rule
+---
 
-# Skipping = you accept the risk
+## 6. Docker Build Caching
 
-# CKV_AWS_39 -> It’s a policy ID defined by Checkov. Checkov has a huge built-in library of security rules, and each rule gets a unique ID like:
-# CKV_<PROVIDER>_<NUMBER>
+### Cache Strategy
 
+- `cache-from` → Use old cache
+- `cache-to` → Save new cache
 
-# output_format — How results are displayed
+**Note:** This is bi-directional caching for optimal build performance.
 
-# ✅ What it does
+---
 
-# Controls how scan results are formatted. -->
+## Understanding Docker Image Digests
 
-6) 
-<!-- # cache-from → use old cache
-# cache-to   → save new cache
+### What is a Digest?
 
-# 👉 This is bi-directional caching -->
-
-
-
-Notes : 
-
-What is a digest, really?
 When Docker builds an image, it takes the entire content of that image (all layers, config, everything) and runs it through a hash function (SHA-256). The output is a fixed-length string like:
+
+```
 sha256:a1b2c3d4e5f6...
-This is the digest. Think of it like a fingerprint:
+```
 
-Tag (e.g. :latest, :himanshu, :main) = a label you stick on a box. You can peel it off and stick it on a different box later. Mutable.
-Digest = the box's actual fingerprint, derived from what's physically inside it. If even one byte of the image changes, the digest changes completely. Immutable.
+This is the digest. Think of it like a fingerprint.
 
-So ghcr.io/repo/jerney-backend:himanshu might point to a different image next week if someone rebuilds and pushes with the same tag. But ghcr.io/repo/jerney-backend@sha256:a1b2c3d4... will always refer to that exact image, forever — that's why signing by digest is the trustworthy way to do it.
+### Tag vs. Digest
 
-Why can't you just use it "directly" — why not needs.build.outputs.digest?
-In a non-matrix job, this pattern works totally fine:
+| Aspect | Tag | Digest |
+|--------|-----|--------|
+| Example | `:latest`, `:himanshu`, `:main` | `@sha256:a1b2c3d4e5f6...` |
+| Behavior | Mutable - can be reassigned | Immutable - derived from content |
+| Mutability | You can peel it off and stick it on a different box later | If even one byte of the image changes, the digest changes completely |
 
+**Real-world example:**
+- `ghcr.io/repo/jerney-backend:himanshu` might point to a different image next week if someone rebuilds and pushes with the same tag
+- `ghcr.io/repo/jerney-backend@sha256:a1b2c3d4...` will always refer to the exact same image
+
+---
+
+## Handling Matrix Jobs and Digest Outputs
+
+### The Problem with Matrix Jobs
+
+In non-matrix jobs, this pattern works fine:
+
+```yaml
 build:
   outputs:
     digest: ${{ steps.build.outputs.digest }}
+
 cosign:
   needs: build
   run: echo ${{ needs.build.outputs.digest }}
+```
 
-  The problem is your build job uses strategy: matrix: component: [backend, frontend]. That means build actually runs twice — as two separate parallel job instances, one for backend, one for frontend. Each instance tries to set the same output name (digest).
-GitHub Actions doesn't merge these into a list. It just lets the last matrix job to finish win — so needs.build.outputs.digest in your cosign job could end up being the frontend digest for both the backend and frontend signing steps, depending on timing. That's a race condition, and it would silently sign the wrong image. This is a known limitation of GitHub Actions matrix jobs, not a mistake in how you wrote it.
-So why artifacts?
-Uploading a file as an artifact named digest-backend and digest-frontend (using matrix.component in the artifact name) keeps the two values physically separate, tagged by which component they belong to. Then when the cosign job also runs as a matrix over [backend, frontend], each run downloads only the artifact matching its own matrix.component — so backend always gets backend's digest, frontend always gets frontend's. No race condition, no guessing.
-There is a simpler alternative if you want to avoid artifacts entirely: give each matrix job's output a unique name using matrix.component baked into the job id — but GitHub Actions doesn't let you dynamically name outputs per matrix value either, so in practice, artifacts (or writing to a shared file/cache keyed by component) are the standard workaround people use for "pass a per-matrix-value value to a downstream job."
+However, your build job uses `strategy: matrix: component: [backend, frontend]`. This means:
+- `build` actually runs twice as two separate parallel job instances
+  - One for `backend`
+  - One for `frontend`
+- GitHub Actions doesn't merge these into a list
+- `needs.build.outputs.digest` in your `cosign` job could end up being the frontend digest for both components
 
+This causes incorrect digest references.
 
-Solution : write each digest to a file → upload as a matrix-scoped artifact → download it in the cosign job using the matching component matrix value.
+### Solution: Use Artifacts
 
+Upload each digest to a separate artifact file:
+
+1. **Write each digest to a file** → Upload as a matrix-scoped artifact
+   - Name artifacts: `digest-backend` and `digest-frontend`
+   - Use `matrix.component` in the artifact name
+
+2. **Download in cosign job** → Use the matching component matrix value
+   - This keeps the two digest values physically separate
+   - Each digest is tagged by which component it belongs to
+
+**Alternative approach:**
+Give each matrix job's output a unique name using `matrix.component` baked into the job ID, but GitHub Actions doesn't allow dynamic job IDs, so the artifact approach is preferred.
+
+---
+
+## Summary
+
+These security practices ensure:
+- ✅ Supply chain integrity
+- ✅ Build process transparency
+- ✅ Artifact authentication
+- ✅ Resource efficiency
+- ✅ Security compliance
